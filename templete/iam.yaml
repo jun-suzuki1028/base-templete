@@ -1,0 +1,144 @@
+AWSTemplateFormatVersion: 2010-09-09
+Resources:
+
+
+# ------------------------------------------------------------#
+# IAM Group
+# ------------------------------------------------------------#
+Type: AWS::IAM::Group
+Properties: 
+  GroupName: BaseGroup
+  ManagedPolicyArns: 
+    - IPRestriction
+    - MfaRequiredPolicy
+  Path: String
+  Policies: 
+    - Policy
+
+# ------------------------------------------------------------#
+# IAM Policy
+# ------------------------------------------------------------#
+  IPRestrictionPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: IPRestriction
+
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: SourceIPRestriction
+            Effect: Deny
+            Action: '*'
+            Resource: '*'
+            Condition:
+              NotIpAddress:
+                aws:SourceIp:
+                  - xxx.xxx.xxx.xx #制限したいIPに書き換えること！！
+
+  MfaRequiredPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: MfaRequiredPolicy
+
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: AllowAllUsersToListAccounts
+            Effect: Allow
+            Action:
+              - 'iam:ListAccountAliases'
+              - 'iam:ListUsers'
+              - 'iam:ListVirtualMFADevices'
+              - 'iam:GetAccountPasswordPolicy'
+              - 'iam:GetAccountSummary'
+            Resource: '*'
+          - Sid: AllowIndividualUserToSeeAndManageOnlyTheirOwnAccountInformation
+            Effect: Allow
+            Action:
+              - 'iam:ChangePassword'
+              - 'iam:CreateAccessKey'
+              - 'iam:CreateLoginProfile'
+              - 'iam:DeleteAccessKey'
+              - 'iam:DeleteLoginProfile'
+              - 'iam:GetLoginProfile'
+              - 'iam:ListAccessKeys'
+              - 'iam:UpdateAccessKey'
+              - 'iam:UpdateLoginProfile'
+              - 'iam:ListSigningCertificates'
+              - 'iam:DeleteSigningCertificate'
+              - 'iam:UpdateSigningCertificate'
+              - 'iam:UploadSigningCertificate'
+              - 'iam:ListSSHPublicKeys'
+              - 'iam:GetSSHPublicKey'
+              - 'iam:DeleteSSHPublicKey'
+              - 'iam:UpdateSSHPublicKey'
+              - 'iam:UploadSSHPublicKey'
+            Resource: 'arn:aws:iam::*:user/${aws:username}'
+          - Sid: AllowIndividualUserToListOnlyTheirOwnMFA
+            Effect: Allow
+            Action:
+              - 'iam:ListMFADevices'
+            Resource:
+              - 'arn:aws:iam::*:mfa/*'
+              - 'arn:aws:iam::*:user/${aws:username}'
+          - Sid: AllowIndividualUserToManageTheirOwnMFA
+            Effect: Allow
+            Action:
+              - 'iam:CreateVirtualMFADevice'
+              - 'iam:DeleteVirtualMFADevice'
+              - 'iam:EnableMFADevice'
+              - 'iam:ResyncMFADevice'
+            Resource:
+              - 'arn:aws:iam::*:mfa/${aws:username}'
+              - 'arn:aws:iam::*:user/${aws:username}'
+          - Sid: AllowIndividualUserToDeactivateOnlyTheirOwnMFAOnlyWhenUsingMFA
+            Effect: Allow
+            Action:
+              - 'iam:DeactivateMFADevice'
+            Resource:
+              - 'arn:aws:iam::*:mfa/${aws:username}'
+              - 'arn:aws:iam::*:user/${aws:username}'
+            Condition:
+              Bool:
+                'aws:MultiFactorAuthPresent': 'true'
+          - Sid: BlockMostAccessUnlessSignedInWithMFA
+            Effect: Deny
+            NotAction:
+              - 'iam:CreateVirtualMFADevice'
+              - 'iam:DeleteVirtualMFADevice'
+              - 'iam:ListVirtualMFADevices'
+              - 'iam:EnableMFADevice'
+              - 'iam:ResyncMFADevice'
+              - 'iam:ListAccountAliases'
+              - 'iam:ListUsers'
+              - 'iam:ListSSHPublicKeys'
+              - 'iam:ListAccessKeys'
+              - 'iam:ListServiceSpecificCredentials'
+              - 'iam:ListMFADevices'
+              - 'iam:GetAccountSummary'
+              - 'sts:GetSessionToken'
+              - 'iam:CreateLoginProfile'
+              - 'iam:ChangePassword'
+            Resource: '*'
+            Condition:
+              BoolIfExists:
+                'aws:MultiFactorAuthPresent': 'false'
+
+Outputs:
+#  PasswordSettingURL:
+#    Description: Please create a password at the URL
+#    Value: !Join 
+#      - ''
+#      - - 'https://'
+#        - console.aws.amazon.com/iam/home?region=
+#        - !Ref 'AWS::Region'
+#        - '#/users/'
+#        - !Ref IamUser0227102
+#        - '?section=security_credentials'
+  LoginURL:
+    Description: Information about console login URL
+    Value: !Join 
+      - ''
+      - - 'https://'
+        - !Ref 'AWS::AccountId'
+        - .signin.aws.amazon.com/console

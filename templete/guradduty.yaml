@@ -1,0 +1,126 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description:
+  "enable guardduty and create SnsPublishLambda"
+
+Parameters:
+  EnableGuardDutyDetector:
+    Type: String
+    Default: no
+    AllowedValues: [yes, no]
+  SnsTopicArn:
+    Description: Enter SNS Topic Arn
+    Type: String
+  MinSeverity:
+    Description: Enter Min publish Severity
+    Type: Number
+    Default: 5
+
+Conditions:
+  EnableGuardDutyDetector: !Equals [ !Ref EnableGuardDutyDetector, yes ]
+
+Resources:
+  GuardDutyDetector:
+    Condition: EnableGuardDutyDetector
+    Type: "AWS::GuardDuty::Detector"
+    Properties:
+      Enable: true
+
+  GuardDutyFindingsEventsRule:
+    Type: "AWS::Events::Rule"
+    Properties:
+      Name: GuardDutyFindingsEventsRule
+      Description: "Alert to Lambda when find threats by GuardDuty"
+      EventPattern: 
+        source:
+          - aws.guardduty
+        detail-type:
+          - GuardDuty Finding
+      Targets:
+        - Id: GuardDutyFindingsTargets1
+          Arn: !GetAtt SnsPublishFunction.Arn
+
+  SnsPublishFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          SNS_TOPIC_ARN: !Ref SnsTopicArn
+          MIN_SEVERTIY: !Ref MinSeverity
+      Code:
+        ZipFile: !Sub |
+          var SNS_TOPIC_ARN = process.env.SNS_TOPIC_ARN;
+          var MIN_SEVERTIY  = process.env.MIN_SEVERTIY;
+          
+          var AWS = require('aws-sdk');
+
+          exports.handler = async(event) => {
+              var severity = event.detail.severity;
+              if(severity < MIN_SEVERTIY) {
+                  return;
+              }
+              
+              var message = `${!event["detail-type"]}\n`;
+              message += "------------------------------\n";
+              for (const key in event.detail) {
+                  if (typeof(event.detail[key]) != 'object')
+                      message += `${!key}: ${!event.detail[key]}\n`;
+              }
+              message += "------------------------------\n";
+
+              var url = `https://${!event.region}.console.aws.amazon.com/guardduty/home?region=${!event.region}#/findings?fId=${!event.detail.id}`;
+              message += `For details, please refer to the following URL:${!url}\n`;
+
+              message += "------------------------------\n";
+
+              var subject = `[${!event["detail-type"]}] ${!event.detail.title}`;
+              
+              // SNS Publish
+              var params = {
+                  Message: message,
+                  Subject: subject,
+                  TopicArn: SNS_TOPIC_ARN
+              };
+
+              var SNS_REGION = SNS_TOPIC_ARN.split(":")[3];
+              var sns = new AWS.SNS({region: SNS_REGION});
+              var result = await sns.publish(params).promise();
+
+              return result;
+          }
+      Runtime: nodejs8.10
+      Timeout: 30
+ 
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Path: "/"
+      Policies:
+        - PolicyName: LambdaExecutionRole-SnsPublishPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+                - sns:Publish
+              Resource: !Ref SnsTopicArn
+ 
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt SnsPublishFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt GuardDutyFindingsEventsRule.Arn
