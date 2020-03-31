@@ -1,19 +1,17 @@
 AWSTemplateFormatVersion: 2010-09-09
+
 Resources:
-
-
 # ------------------------------------------------------------#
 # IAM Group
 # ------------------------------------------------------------#
-Type: AWS::IAM::Group
-Properties: 
-  GroupName: BaseGroup
-  ManagedPolicyArns: 
-    - IPRestriction
-    - MfaRequiredPolicy
-  Path: String
-  Policies: 
-    - Policy
+  BaseGroup:
+    Type: AWS::IAM::Group
+    Properties: 
+      GroupName: BaseGroup
+      ManagedPolicyArns: 
+        - arn:aws:iam::aws:policy/AdministratorAccess #Admin
+        - !Ref IPRestrictionPolicy
+        - !Ref MfaRequiredPolicy
 
 # ------------------------------------------------------------#
 # IAM Policy
@@ -33,7 +31,7 @@ Properties:
             Condition:
               NotIpAddress:
                 aws:SourceIp:
-                  - xxx.xxx.xxx.xx #制限したいIPに書き換えること！！
+                  - 210.162.22.210 #制限したいIPに書き換えること！！現状はIRNET
 
   MfaRequiredPolicy:
     Type: AWS::IAM::ManagedPolicy
